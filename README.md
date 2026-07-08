@@ -30,7 +30,7 @@
 
 <div align="center">
 
-![บทสนทนาในห้องสมุด พร้อมตัวเลือกภาษาไทย](docs/screenshots/library-choices.png)
+![ตัวอย่างบทสนทนาภาษาไทยในเกม](docs/screenshots/showcase.gif)
 
 | กล่องบทพูดภาษาไทย | ตัวเลือกบทสนทนา |
 |:---:|:---:|
