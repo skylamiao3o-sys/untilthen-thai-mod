@@ -11,6 +11,7 @@
 
 [![Release](https://img.shields.io/github/v/release/jorgejord/untilthen-thai-mod?style=for-the-badge&label=เวอร์ชันล่าสุด&color=E8833A)](../../releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/jorgejord/untilthen-thai-mod/total?style=for-the-badge&label=ยอดดาวน์โหลด&color=D65A31)](../../releases)
+[![Discord](https://img.shields.io/badge/Discord-รายงานบั๊ก%20%2F%20พูดคุย-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/CarAy7yDy)
 [![License](https://img.shields.io/badge/โค้ด-MIT-4C9A8E?style=for-the-badge)](LICENSE)
 
 ![Platform](https://img.shields.io/badge/Windows-Steam-2C3E50?style=flat-square&logo=windows)
@@ -71,6 +72,16 @@
    *(อยากได้เวอร์ชันแบบเพื่อนสนิท เลือก Filipino)*
 
 > ถอนการติดตั้ง: รัน `UNINSTALL.bat` หรือคืนไฟล์ `UntilThen.pck.bak`
+
+### 🛠️ แก้ปัญหาที่พบบ่อย
+- **เปิดเกมแล้วขึ้น `Couldn't load project data ... Is the .pck file missing?`** = ไฟล์เกมถูกเขียนไม่ครบตอนติดตั้ง มักเพราะ **พื้นที่ดิสก์ไม่พอ** (ต้องว่าง ~4 GB บนไดรฟ์ที่ลงเกม)
+  → รัน **`UNINSTALL.bat`** คืนไฟล์เดิม (เกมกลับมาเล่นได้ทันที) → เคลียร์พื้นที่ดิสก์ → ติดตั้งใหม่
+  *(ตัวติดตั้งเวอร์ชันใหม่จะ **ตรวจไฟล์ก่อนติดตั้ง** — ถ้าสร้างไม่ครบจะไม่ทับไฟล์เกม แล้วเตือนให้เคลียร์ดิสก์แทน)*
+- **แอนติไวรัส/SmartScreen เตือน** = false positive (มอดอินดี้ไม่ได้เซ็นใบรับรอง) → More info → Run anyway หรือเพิ่มโฟลเดอร์เกมใน AV exclusions
+
+### 💬 เจอบั๊ก / อยากพูดคุย → Discord
+[**https://discord.gg/CarAy7yDy**](https://discord.gg/CarAy7yDy) — รายงานบั๊ก แจ้งจุดแปลผิด/เพศตัวละคร หรือพูดคุยได้เลย
+*(ถ้าติดปัญหาตอนติดตั้ง ช่วยแนบไฟล์ `debug.log` ที่อยู่ข้างๆ `INSTALL.bat` มาด้วย)*
 
 ---
 
