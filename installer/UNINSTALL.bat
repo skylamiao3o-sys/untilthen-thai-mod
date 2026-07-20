@@ -8,7 +8,12 @@ if %errorlevel% neq 0 (
   exit /b
 )
 
-set "GAME=C:\Program Files (x86)\Steam\steamapps\common\Until Then"
+REM auto-detect the game across all Steam libraries (same as the installer)
+set "GAME="
+if exist "%~dp0detect_game.ps1" (
+  for /f "delims=" %%G in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0detect_game.ps1" 2^>nul') do set "GAME=%%G"
+)
+if not defined GAME set "GAME=C:\Program Files (x86)\Steam\steamapps\common\Until Then"
 if not exist "%GAME%\UntilThen.pck.bak" (
   set /p GAME=Type the full path to the "Until Then" folder:
 )
@@ -47,7 +52,13 @@ if %errorlevel%==0 (
 )
 
 echo [..] Restoring original...
-copy /Y "%BAK%" "%PCK%" >nul
+copy /Y "%BAK%" "%PCK%" >nul 2>&1
+if errorlevel 1 (
+  echo [X] Restore FAILED - close Steam fully ^(tray -^> Exit^) and run this again.
+  echo     Still failing? Steam -^> right-click Until Then -^> Properties -^>
+  echo     Installed Files -^> "Verify integrity of game files" also restores it.
+  pause & exit /b 1
+)
 echo [OK] Restored to English. (backup kept as UntilThen.pck.bak)
 echo.
 if defined REOPEN if defined STEAMEXE ( echo [..] Reopening Steam... & start "" "%STEAMEXE%" )

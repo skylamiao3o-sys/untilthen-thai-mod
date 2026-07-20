@@ -82,6 +82,39 @@ def operand_positions(rel: str):
         if _u32(btail, i - 4) < 256 and _u32(btail, i) in starts:
             pos.add(i)
 
+    # backup 2: inline string-push opcode '0a 00' (u16=10) ตามด้วย operand offset.
+    # จับ operand ของสตริงที่ 'ไม่ขยับใน 6 locale ทางการ แต่ขยับในไทย' (เช่น 1/7b 'F:"confused"'
+    # ที่ locale อื่นสั้นกว่าเลยไม่เลื่อน → oracle+prec<256 พลาด → ค้าง). opcode-based ไม่ง้อ locale.
+    for i in range(2, len(btail) - 3):
+        if any((i + j) in prot for j in range(4)):
+            continue
+        if btail[i - 2] == 0x0a and btail[i - 1] == 0x00 and _u32(btail, i) in starts:
+            pos.add(i)
+
+    # backup 3: ค่าเป็น 'จุดเริ่มสตริง' ทั้งใน base และทุก locale ทางการที่ 'ตำแหน่งเดียวกัน'
+    # (ค่าบังเอิญจะไม่เป็น start ที่ถูกทุก section ที่ layout ต่างกัน) → จับ operand ที่ 'ไม่ขยับเลย
+    # ในทุก locale' ที่ diff-based พลาด. ครบสุด กัน midchar ในไฟล์ที่มี string หลากหลายความยาว
+    loc_data = []
+    for loc in LOCS:
+        lp = STORY_DIR / "locales" / loc / rel
+        if not lp.exists():
+            continue
+        try:
+            lpar = core.parse_inkb(lp.read_bytes())
+        except Exception:
+            continue
+        if len(lpar['binary_tail']) == len(btail):
+            loc_data.append((lpar['binary_tail'], _base_starts(lpar['strings'])))
+    if loc_data:
+        for i in range(0, len(btail) - 3):
+            if i in prot:
+                continue
+            bv = _u32(btail, i)
+            if bv == 0 or bv not in starts:
+                continue
+            if all(_u32(lt, i) in ls for lt, ls in loc_data):
+                pos.add(i)
+
     _pos_cache[rel] = (pos, n_official)
     return _pos_cache[rel]
 

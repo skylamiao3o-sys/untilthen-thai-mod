@@ -1,6 +1,13 @@
 {
   "_comment": "แหล่งยืนยันเพศตัวละคร — ดึงจาก characters.json (ชื่อเต็ม) + sprite folders + บริบทเกม. ใช้โดย post_process เป็น safety net และเป็น reference ตอนแปล. gender: male/female/neutral/unknown",
   "_ambiguous_need_confirm": [],
+  "DadDaughter": {
+    "gender": "male",
+    "full": "",
+    "pronoun": "ผม",
+    "ending": "ครับ",
+    "role": "NPC พ่ออุ้มลูกคุยโทรศัพท์ ฉาก 3/1 (โรงพยาบาล)"
+  },
   "Mark": {
     "gender": "male",
     "full": "Mark Borja",
@@ -744,11 +751,11 @@
     "src": "gender-report"
   },
   "NpcNurse": {
-    "gender": "female",
-    "pronoun": "ฉัน/เรา",
-    "ending": "ค่ะ",
+    "gender": "male",
+    "pronoun": "ผม",
+    "ending": "ครับ",
     "role": "NPC/role",
-    "src": "gender-report"
+    "src": "sprite-verify-user"
   },
   "NpcMother": {
     "gender": "female",
