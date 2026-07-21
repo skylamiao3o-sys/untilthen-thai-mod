@@ -115,6 +115,21 @@ def operand_positions(rel: str):
             if all(_u32(lt, i) in ls for lt, ls in loc_data):
                 pos.add(i)
 
+    # FILTER: ตัด false positive ของ backup heuristics (บั๊ก 'Mark ตัวไหล' ฉาก 5/9) —
+    # ตำแหน่งที่ 'ทุก locale ทางการค่าเท่ากับ base เป๊ะ' แต่ 'มี locale ที่ค่านั้นไม่ใช่
+    # จุดเริ่มสตริงของ locale นั้น' = ไม่ใช่ operand สตริงแน่นอน (ไฟล์ทางการเล่นได้ปกติ
+    # ทั้งที่ค่า "ชี้กลางสตริง" ของตัวเอง) — เป็นข้อมูล bytecode อื่นที่บังเอิญตรง start ของ
+    # base. การ repoint มันทำตรรกะฉากพัง (เช่น anim เดินไม่เล่น). operand แท้ที่ไม่ขยับ
+    # ใน locale จะยังเป็น start ของ locale นั้นเสมอ จึงไม่โดนตัด.
+    if loc_data:
+        drop = set()
+        for i in pos:
+            bv = _u32(btail, i)
+            if (all(_u32(lt, i) == bv for lt, ls in loc_data)
+                    and any(bv not in ls for lt, ls in loc_data)):
+                drop.add(i)
+        pos -= drop
+
     _pos_cache[rel] = (pos, n_official)
     return _pos_cache[rel]
 
