@@ -79,6 +79,9 @@
 อย่าเปิดเกมหรืออัปเดต/ตรวจไฟล์ Until Then ระหว่างติดตั้ง อ่านรายละเอียดได้ใน [คู่มือตัวติดตั้ง](installer/INSTALL_README.txt)
 
 ### 🛠️ แก้ปัญหาที่พบบ่อย
+- **พื้นที่ไม่พอเพราะมีเกม + .bak + แพ็กชั่วคราวหลายก้อน** — ใช้ชุดประหยัดพื้นที่ [Itim LowDisk](https://github.com/skylamiao3o-sys/untilthen-thai-mod/releases/download/v1.0/UntilThen_ThaiMod_Itim_LowDisk_20261009.zip) หรือ [Sarabun LowDisk](https://github.com/skylamiao3o-sys/untilthen-thai-mod/releases/download/v1.0/UntilThen_ThaiMod_Sarabun_LowDisk_20261009.zip) แตก ZIP แล้วเปิด `INSTALL_LOW_DISK.bat`
+  โหมดนี้ใช้ไฟล์เกมปัจจุบัน ตรวจทุกไฟล์ก่อนลบ `.bak`/แพ็กชั่วคราวเก่าที่จำชื่อได้ และอ่านพื้นที่ว่างจริงใหม่ ต้องว่างประมาณ 3.5 GB หลังคืนพื้นที่ ระหว่างติดตั้งมีเกมกับแพ็กใหม่สองก้อน หลังสำเร็จเหลือแพ็กเกมก้อนเดียวของโหมดนี้ โดยไม่สั่งปิด Steam
+  **ไม่เก็บแบ็กอัปทั้งก้อนและลบสำเนาเก่าโดยตรง ไม่ผ่านถังขยะ** ถอนม็อดผ่าน Steam Verify files หากเกมปัจจุบันเสียจะไม่ลบสำเนาเก่า ไฟล์ชื่ออื่นหรือ `.bak.old` จะไม่ถูกลบ อ่าน [รายละเอียดโหมดประหยัดพื้นที่](installer/LOW_DISK_README.txt)
 - **ติด `Checksum mismatch: res://.godot/extension_list.cfg`** — [ดาวน์โหลดตัวตรวจไฟล์](https://github.com/skylamiao3o-sys/untilthen-thai-mod/releases/download/v1.0/UntilThen_CheckFiles_20261009_r1.zip) แตก ZIP ลงโฟลเดอร์ใหม่ แล้วเปิด `CHECK_FILES.bat` และส่ง `diagnostic.log` กลับมา
   ตัวตรวจจะระบุว่าเลือก `.pck` หรือ `.bak` พร้อมเทียบ checksum ของตัวอย่างข้อมูล โดยไม่แก้ไฟล์เกมและไม่ปิด Steam เป็นเครื่องมือวินิจฉัย ไม่ใช่ตัวซ่อมหรือตรวจครบทั้งเกม
 - **ไฟล์เกมถูกล็อก** — ตัวติดตั้งจะหยุดพร้อมแจ้งชื่อไฟล์ ผู้ใช้ปิดเกม/Steam เองแล้วลองใหม่

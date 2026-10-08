@@ -15,7 +15,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / ("ThaiMod" if (ROOT / "ThaiMod").is_dir() else "installer")
 PS = "powershell.exe"
-HELPERS = ("INSTALL.bat", "UNINSTALL.bat", "install_low_memory.ps1", "LowMemoryPck.cs", "validate_pck.ps1", "steam_guard.ps1")
+HELPERS = ("INSTALL.bat", "INSTALL_LOW_DISK.bat", "UNINSTALL.bat", "install_low_memory.ps1", "LowMemoryPck.cs", "validate_pck.ps1", "steam_guard.ps1")
 
 
 def fixture(path, files, relative=True):
@@ -113,7 +113,7 @@ class InstallerTests(unittest.TestCase):
         # Mock process discovery in the fixture runner only; never close the user's Steam.
         self.install_runner = self.root / "invoke_install.ps1"
         self.install_runner.write_text(r'''
-param([string]$Script, [string]$Game, [switch]$CheckOnly, [switch]$MockRunning, [switch]$HoldLive, [switch]$Restore, [switch]$MockReopen, [switch]$MockGameRunning, [switch]$MockGameReopen)
+param([string]$Script, [string]$Game, [switch]$CheckOnly, [switch]$MockRunning, [switch]$HoldLive, [switch]$Restore, [switch]$MockReopen, [switch]$MockGameRunning, [switch]$MockGameReopen, [switch]$LowDisk, [switch]$MockLowSpace, [switch]$MockPayloadChange)
 $script:steamTouches = 0
 $script:gameQueries = 0
 function Get-Process {
@@ -122,6 +122,9 @@ function Get-Process {
         $script:steamTouches++
     }
     if ($Name -contains 'UntilThen') { $script:gameQueries++ }
+    if ($MockPayloadChange -and $script:gameQueries -eq 2) {
+        [IO.File]::WriteAllText((Join-Path (Split-Path $Script) 'payload/replace.txt'), 'bad mod data')
+    }
     $available = @()
     if ($MockRunning -or ($MockReopen -and $script:gameQueries -ge 2)) {
         $available += [PSCustomObject]@{ ProcessName = 'steam'; Id = 4242; Path = $null; SessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId }
@@ -136,10 +139,17 @@ function Get-ItemProperty { [CmdletBinding()]param([string]$LiteralPath); $scrip
 function Start-Process { [CmdletBinding()]param([string]$FilePath, [string[]]$ArgumentList, [string]$WindowStyle); $script:steamTouches++; throw 'Unexpected launch' }
 function Stop-Process { [CmdletBinding()]param([string[]]$Name, [int[]]$Id, [switch]$Force); $script:steamTouches++; throw 'Unexpected process stop' }
 function Start-Sleep { param([int]$Milliseconds, [int]$Seconds); $script:steamTouches++; throw 'Unexpected wait' }
+function New-Object {
+    param([string]$TypeName, [object[]]$ArgumentList)
+    if ($MockLowSpace -and $TypeName -eq 'IO.DriveInfo') {
+        return [PSCustomObject]@{DriveFormat='NTFS'; AvailableFreeSpace=1MB}
+    }
+    Microsoft.PowerShell.Utility\New-Object -TypeName $TypeName -ArgumentList $ArgumentList
+}
 $handle = $null
 try {
     if ($HoldLive) { $handle = [IO.File]::Open((Join-Path $Game 'UntilThen.pck'), 'Open', 'Read', 'Read') }
-    & $Script -Game $Game -CheckOnly:$CheckOnly -Restore:$Restore
+    & $Script -Game $Game -CheckOnly:$CheckOnly -Restore:$Restore -LowDisk:$LowDisk
     $result = $LASTEXITCODE
     Write-Host ('Steam operations: ' + $script:steamTouches)
     if ($script:steamTouches -ne 0) { exit 99 }
@@ -166,9 +176,109 @@ try {
         assert self.root.resolve().is_relative_to((ROOT / "build").resolve())
         self.tmp.cleanup()
 
-    def install(self, ok=True, check=False):
+    def install(self, ok=True, check=False, low_disk=False):
         return powershell(self.install_runner, "-Script", self.package / "install_low_memory.ps1", "-Game", self.game,
-                          *(["-CheckOnly"] if check else []), ok=ok)
+                          *(["-CheckOnly"] if check else []), *(['-LowDisk'] if low_disk else []), ok=ok)
+
+    def test_low_disk_install_and_reinstall_keep_only_live_pck(self):
+        self.install(low_disk=True)
+        check_contents(self.pck, self.expected)
+        self.assertEqual([p.name for p in self.game.iterdir()], ['UntilThen.pck'])
+        self.install(low_disk=True)
+        check_contents(self.pck, self.expected)
+        self.assertEqual([p.name for p in self.game.iterdir()], ['UntilThen.pck'])
+
+    def test_low_disk_bad_backup_and_known_temps_removed_after_live_verification(self):
+        self.bak.write_bytes(b'broken old backup')
+        temps = ['UntilThen.thmod.tmp.pck', 'UntilThen.thmod.12345.pck',
+                 'UntilThen.thmod.lowram.' + 'a' * 32 + '.tmp.pck']
+        for name in temps:
+            (self.game / name).write_bytes(b'abandoned temporary pack')
+        # Similar names, saved backups, and directories must never be swept.
+        keep = ['UntilThen.pck.bak.old', 'UntilThen_thai.pck', 'UntilThen.thmod.custom.pck']
+        for name in keep:
+            (self.game / name).write_bytes(b'keep me')
+        directory_to_keep = self.game / ('UntilThen.thmod.lowram.' + 'b' * 32 + '.tmp.pck')
+        directory_to_keep.mkdir()
+        output = self.install(low_disk=True)
+        self.assertIn('Full live-game verification passed.', output)
+        self.assertIn('Available after space recovery:', output)
+        self.assertIn('Steam operations: 0', output)
+        check_contents(self.pck, self.expected)
+        self.assertFalse(self.bak.exists())
+        for name in temps:
+            self.assertFalse((self.game / name).exists())
+        for name in keep:
+            self.assertEqual((self.game / name).read_bytes(), b'keep me')
+        self.assertTrue(directory_to_keep.is_dir())
+
+    def test_low_disk_bad_live_keeps_backup_and_temps(self):
+        self.bak.write_bytes(self.old_bytes)
+        temporary = self.game / 'UntilThen.thmod.tmp.pck'
+        temporary.write_bytes(b'keep me until live is verified')
+        offset, _, _ = directory(self.pck)['res://unchanged.txt']
+        with self.pck.open('r+b') as f:
+            f.seek(offset)
+            f.write(b'X')
+        bad_live = self.pck.read_bytes()
+        self.assertIn('Checksum mismatch', self.install(low_disk=True, ok=False))
+        self.assertEqual(self.pck.read_bytes(), bad_live)
+        self.assertEqual(self.bak.read_bytes(), self.old_bytes)
+        self.assertEqual(temporary.read_bytes(), b'keep me until live is verified')
+
+    def test_low_disk_missing_live_does_not_remove_backup(self):
+        self.bak.write_bytes(self.old_bytes)
+        self.pck.unlink()
+        self.assertIn('needs an intact UntilThen.pck', self.install(low_disk=True, ok=False))
+        self.assertEqual(self.bak.read_bytes(), self.old_bytes)
+        self.assertFalse(self.pck.exists())
+
+    def test_low_disk_preflight_does_not_remove_anything(self):
+        self.bak.write_bytes(b'bad backup')
+        output = self.install(low_disk=True, check=True)
+        self.assertIn('Enough free space is NOT yet confirmed', output)
+        self.assertEqual(self.pck.read_bytes(), self.old_bytes)
+        self.assertEqual(self.bak.read_bytes(), b'bad backup')
+
+    def test_low_disk_incomplete_payload_keeps_backup(self):
+        self.bak.write_bytes(self.old_bytes)
+        (self.package / 'payload/added.txt').unlink()
+        self.assertIn('Incomplete payload', self.install(low_disk=True, ok=False))
+        self.assertEqual(self.pck.read_bytes(), self.old_bytes)
+        self.assertEqual(self.bak.read_bytes(), self.old_bytes)
+
+    def test_low_disk_game_reopens_before_cleanup_preserves_backup(self):
+        self.bak.write_bytes(self.old_bytes)
+        powershell(self.install_runner, '-Script', self.package / 'install_low_memory.ps1',
+                   '-Game', self.game, '-LowDisk', '-MockGameReopen', ok=False)
+        self.assertEqual(self.pck.read_bytes(), self.old_bytes)
+        self.assertEqual(self.bak.read_bytes(), self.old_bytes)
+
+    def test_low_disk_batch_installs_without_backup(self):
+        command = f'cmd.exe /d /s /c ""{self.package / "INSTALL_LOW_DISK.bat"}" -Game "{self.game}""'
+        result = subprocess.run(command, input='\n', capture_output=True, text=True, errors='replace', timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        check_contents(self.pck, self.expected)
+        self.assertFalse(self.bak.exists())
+
+    def test_low_disk_rechecks_actual_free_space_after_cleanup(self):
+        self.bak.write_bytes(self.old_bytes)
+        output = powershell(self.install_runner, '-Script', self.package / 'install_low_memory.ps1',
+                            '-Game', self.game, '-LowDisk', '-MockLowSpace', ok=False)
+        self.assertIn('Not enough free space', output)
+        self.assertIn('Full live-game verification passed', output)
+        self.assertEqual(self.pck.read_bytes(), self.old_bytes)
+        self.assertFalse(self.bak.exists())
+        self.assertFalse(list(self.game.glob('*.tmp.pck')))
+
+    def test_low_disk_build_failure_after_cleanup_preserves_live(self):
+        self.bak.write_bytes(self.old_bytes)
+        output = powershell(self.install_runner, '-Script', self.package / 'install_low_memory.ps1',
+                            '-Game', self.game, '-LowDisk', '-MockPayloadChange', ok=False)
+        self.assertIn('Checksum mismatch', output)
+        self.assertEqual(self.pck.read_bytes(), self.old_bytes)
+        self.assertFalse(self.bak.exists())
+        self.assertFalse(list(self.game.glob('*.tmp.pck')))
 
     def test_running_steam_does_not_block_install(self):
         output = powershell(self.install_runner, "-Script", self.package / "install_low_memory.ps1",
