@@ -79,6 +79,8 @@
 อย่าเปิดเกมหรืออัปเดต/ตรวจไฟล์ Until Then ระหว่างติดตั้ง อ่านรายละเอียดได้ใน [คู่มือตัวติดตั้ง](installer/INSTALL_README.txt)
 
 ### 🛠️ แก้ปัญหาที่พบบ่อย
+- **ติด `Checksum mismatch: res://.godot/extension_list.cfg`** — [ดาวน์โหลดตัวตรวจไฟล์](https://github.com/skylamiao3o-sys/untilthen-thai-mod/releases/download/v1.0/UntilThen_CheckFiles_20261009_r1.zip) แตก ZIP ลงโฟลเดอร์ใหม่ แล้วเปิด `CHECK_FILES.bat` และส่ง `diagnostic.log` กลับมา
+  ตัวตรวจจะระบุว่าเลือก `.pck` หรือ `.bak` พร้อมเทียบ checksum ของตัวอย่างข้อมูล โดยไม่แก้ไฟล์เกมและไม่ปิด Steam เป็นเครื่องมือวินิจฉัย ไม่ใช่ตัวซ่อมหรือตรวจครบทั้งเกม
 - **ไฟล์เกมถูกล็อก** — ตัวติดตั้งจะหยุดพร้อมแจ้งชื่อไฟล์ ผู้ใช้ปิดเกม/Steam เองแล้วลองใหม่
   ตัวติดตั้งและตัวถอนไม่สั่งเปิด/ปิด Steam ไม่ตรวจหรือรอโปรเซส Steam รายละเอียดอยู่ใน `debug.log` หรือ `uninstall_debug.log`
 - **เปิดเกมแล้วขึ้น `Couldn't load project data ... Is the .pck file missing?`** = ไฟล์เกมถูกเขียนไม่ครบตอนติดตั้ง มักเพราะ **พื้นที่ดิสก์ไม่พอ** (ต้องว่าง ~4 GB บนไดรฟ์ที่ลงเกม)
