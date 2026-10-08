@@ -1,7 +1,6 @@
 # Windows PowerShell 5.1; ASCII source so it also runs on non-Thai Windows.
 [CmdletBinding()]
-param([string]$Game, [switch]$CheckOnly, [switch]$Restore,
-      [ValidateRange(1, 30)][int]$SteamTimeoutSeconds = 30)
+param([string]$Game, [switch]$CheckOnly, [switch]$Restore)
 
 $ErrorActionPreference = 'Stop'
 $plan = $null
@@ -41,12 +40,13 @@ try {
     $transcript = $true
     Write-Host 'Until Then - Thai Mod - LOW MEMORY installer'
     Write-Host "Game: $Game"
-    Write-Host 'One worker, 1 MB file buffer. Steam will stay closed after installation.'
+    Write-Host 'One worker, 1 MB file buffer. Steam is managed by you.'
+    Write-Host 'Installation can proceed with Steam open if the game files are available.'
     try { [Diagnostics.Process]::GetCurrentProcess().PriorityClass = 'BelowNormal' } catch { }
     . (Join-Path $PSScriptRoot 'steam_guard.ps1')
 
     if (-not $CheckOnly) {
-        Close-ModSteam -TimeoutSeconds $SteamTimeoutSeconds
+        Assert-ModGameClosed
         Assert-ModFilesAvailable -Game $Game
     }
 
@@ -88,7 +88,7 @@ try {
             $plan.Dispose()
             $plan = $null
         }
-        Assert-ModClientsClosed
+        Assert-ModGameClosed
         Assert-ModFilesAvailable -Game $Game
 
         Write-Host '[..] Installing verified PCK...'
@@ -107,7 +107,7 @@ try {
             [IO.File]::Move($tempPck, $pck)
         }
         $tempPck = $null
-        Write-Host '[OK] DONE! Open Steam and the game when ready.'
+        Write-Host '[OK] DONE! You can open the game when ready.'
         if ($Restore) {
             Write-Host 'Restored original game. Backup kept: UntilThen.pck.bak.'
         } else {

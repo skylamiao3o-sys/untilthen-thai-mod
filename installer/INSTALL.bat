@@ -4,8 +4,8 @@ title Until Then - Thai Mod - Low Memory Installer
 echo ================================================
 echo    Until Then - Thai Mod  [LOW MEMORY]
 echo ================================================
-echo Save and close the game first. Steam will be asked to exit.
-echo If Steam cannot close within 30 seconds, the installer will stop.
+echo Save and close Until Then first. You manage Steam yourself.
+echo Steam may stay open if the game files are not locked.
 echo Extract the WHOLE zip first. Keep all files together.
 echo.
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_low_memory.ps1" %*

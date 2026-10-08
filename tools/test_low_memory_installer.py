@@ -10,7 +10,6 @@ import shutil
 import struct
 import subprocess
 import tempfile
-import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,116 +96,6 @@ def powershell(script, *args, ok=True, stdin=None):
     return result.stdout + result.stderr
 
 
-STEAM_RUNNER = r'''
-param([string]$Helper, [string]$Fixture, [string]$Scenario)
-$ErrorActionPreference = 'Stop'
-. $Helper
-$script:shutdownRequested = $false
-$script:clientClosed = $false
-$script:steamQueries = 0
-$script:fakeExe = Join-Path $Fixture 'Steam client ! & test\steam.exe'
-[void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($script:fakeExe))
-[IO.File]::WriteAllText($script:fakeExe, 'fixture; never execute')
-
-function Get-Process {
-    [CmdletBinding()]param([string[]]$Name)
-    $session = [Diagnostics.Process]::GetCurrentProcess().SessionId
-    if ($Name -contains 'steamservice' -or $Name -contains 'steamwebhelper') { throw 'Must not wait on services/helpers' }
-    if ($Name -contains 'UntilThen') {
-        if ($Scenario -eq 'GameOpen' -or ($Scenario -eq 'GameReopened' -and $script:clientClosed)) {
-            [PSCustomObject]@{ ProcessName = 'UntilThen'; Id = 4243; SessionId = $session }
-        }
-        return
-    }
-    if ($Name -notcontains 'steam') { throw 'Unexpected process query' }
-    $script:steamQueries++
-    if ($Scenario -eq 'NoSteam' -or $script:clientClosed) { return }
-    if ($Scenario -eq 'ManualExit' -and $script:steamQueries -gt 2) { return }
-    if ($Scenario -eq 'OtherSession') { $session++ }
-    $path = $script:fakeExe
-    if ($Scenario -in @('RegistryFallback', 'MissingPath', 'ManualExit')) { $path = $null }
-    [PSCustomObject]@{ ProcessName = 'steam'; Id = 4242; SessionId = $session; Path = $path }
-}
-
-function Get-ItemProperty {
-    [CmdletBinding()]param([string]$LiteralPath)
-    if ($Scenario -eq 'RegistryFallback' -and $LiteralPath -eq 'HKLM:\SOFTWARE\WOW6432Node\Valve\Steam') {
-        [PSCustomObject]@{ InstallPath = [IO.Path]::GetDirectoryName($script:fakeExe) }
-    }
-}
-
-function Start-Process {
-    [CmdletBinding()]param([string]$FilePath, [string[]]$ArgumentList, [string]$WindowStyle, [switch]$Wait)
-    if ($FilePath -ne $script:fakeExe -or $ArgumentList[0] -ne '-shutdown' -or $WindowStyle -ne 'Hidden' -or $Wait) {
-        throw 'Incorrect shutdown invocation'
-    }
-    $script:shutdownRequested = $true
-    if ($Scenario -eq 'AccessDenied') { throw 'Access is denied (test)' }
-    if ($Scenario -ne 'Stuck') { $script:clientClosed = $true }
-}
-
-try {
-    Close-ModSteam -TimeoutSeconds 1
-    if ($Scenario -in @('Stops', 'RegistryFallback') -and -not $script:shutdownRequested) { throw 'Shutdown was not requested' }
-    if ($Scenario -in @('NoSteam', 'OtherSession', 'ManualExit') -and $script:shutdownRequested) { throw 'Unexpected shutdown request' }
-    Write-Host 'STEAM TEST OK'
-    exit 0
-} catch {
-    Write-Host $_.Exception.Message
-    exit 1
-}
-'''
-
-
-class SteamGuardTests(unittest.TestCase):
-    def setUp(self):
-        (ROOT / 'build').mkdir(exist_ok=True)
-        self.tmp = tempfile.TemporaryDirectory(prefix='steam guard test ', dir=ROOT / 'build')
-        self.root = Path(self.tmp.name)
-        assert self.root.resolve().is_relative_to((ROOT / 'build').resolve())
-        self.runner = self.root / 'steam_test.ps1'
-        self.runner.write_text(STEAM_RUNNER, encoding='ascii')
-
-    def tearDown(self):
-        assert self.root.resolve().is_relative_to((ROOT / 'build').resolve())
-        self.tmp.cleanup()
-
-    def scenario(self, name, ok=True):
-        started = time.monotonic()
-        result = powershell(self.runner, '-Helper', PACKAGE / 'steam_guard.ps1',
-                            '-Fixture', self.root, '-Scenario', name, ok=ok)
-        self.assertLess(time.monotonic() - started, 10, 'Steam shutdown did not respect the timeout')
-        return result
-
-    def test_already_closed(self):
-        self.scenario('NoSteam')
-
-    def test_normal_shutdown_with_special_characters_in_path(self):
-        self.assertIn('Steam closed', self.scenario('Stops'))
-
-    def test_machine_registry_fallback(self):
-        self.assertIn('Steam closed', self.scenario('RegistryFallback'))
-
-    def test_stuck_client_times_out(self):
-        self.assertIn('did not exit within 1 seconds (PID: 4242)', self.scenario('Stuck', ok=False))
-
-    def test_missing_steam_path_times_out(self):
-        self.assertIn('Cannot locate steam.exe', self.scenario('MissingPath', ok=False))
-
-    def test_access_denied_is_reported(self):
-        self.assertIn('Access is denied (test)', self.scenario('AccessDenied', ok=False))
-
-    def test_manual_exit_while_waiting(self):
-        self.assertIn('Steam closed', self.scenario('ManualExit'))
-
-    def test_other_windows_session_is_ignored(self):
-        self.scenario('OtherSession')
-
-    def test_game_is_not_force_closed(self):
-        self.assertIn('Save and close Until Then', self.scenario('GameOpen', ok=False))
-
-    def test_game_reopening_aborts(self):
-        self.assertIn('Save and close Until Then', self.scenario('GameReopened', ok=False))
 
 
 class InstallerTests(unittest.TestCase):
@@ -224,23 +113,37 @@ class InstallerTests(unittest.TestCase):
         # Mock process discovery in the fixture runner only; never close the user's Steam.
         self.install_runner = self.root / "invoke_install.ps1"
         self.install_runner.write_text(r'''
-param([string]$Script, [string]$Game, [switch]$CheckOnly, [switch]$MockRunning, [switch]$HoldLive, [switch]$Restore, [switch]$MockReopen)
-$script:steamQueries = 0
+param([string]$Script, [string]$Game, [switch]$CheckOnly, [switch]$MockRunning, [switch]$HoldLive, [switch]$Restore, [switch]$MockReopen, [switch]$MockGameRunning, [switch]$MockGameReopen)
+$script:steamTouches = 0
+$script:gameQueries = 0
 function Get-Process {
     [CmdletBinding()]param([string[]]$Name)
-    if ($Name -contains 'steam') { $script:steamQueries++ }
-    if ($Name -contains 'steam' -and ($MockRunning -or ($MockReopen -and $script:steamQueries -ge 2))) {
-        [PSCustomObject]@{ ProcessName = 'steam'; Id = 4242; Path = $null; SessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId }
+    if (-not $Name -or $Name -contains 'steam' -or $Name -contains 'steamwebhelper' -or $Name -contains 'steamservice') {
+        $script:steamTouches++
     }
+    if ($Name -contains 'UntilThen') { $script:gameQueries++ }
+    $available = @()
+    if ($MockRunning -or ($MockReopen -and $script:gameQueries -ge 2)) {
+        $available += [PSCustomObject]@{ ProcessName = 'steam'; Id = 4242; Path = $null; SessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId }
+    }
+    if ($MockGameRunning -or ($MockGameReopen -and $script:gameQueries -ge 2)) {
+        $available += [PSCustomObject]@{ ProcessName = 'UntilThen'; Id = 4243; SessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId }
+    }
+    $available | Where-Object { $Name -contains $_.ProcessName }
 }
-# Never discover or launch the real Steam client during tests.
-function Get-ItemProperty { [CmdletBinding()]param([string]$LiteralPath) }
-function Start-Process { [CmdletBinding()]param([string]$FilePath, [string[]]$ArgumentList, [string]$WindowStyle); throw 'Unexpected launch in fixture test' }
+# Fail the test on ANY Steam inspection/control/wait, even if the installer catches the error.
+function Get-ItemProperty { [CmdletBinding()]param([string]$LiteralPath); $script:steamTouches++ }
+function Start-Process { [CmdletBinding()]param([string]$FilePath, [string[]]$ArgumentList, [string]$WindowStyle); $script:steamTouches++; throw 'Unexpected launch' }
+function Stop-Process { [CmdletBinding()]param([string[]]$Name, [int[]]$Id, [switch]$Force); $script:steamTouches++; throw 'Unexpected process stop' }
+function Start-Sleep { param([int]$Milliseconds, [int]$Seconds); $script:steamTouches++; throw 'Unexpected wait' }
 $handle = $null
 try {
     if ($HoldLive) { $handle = [IO.File]::Open((Join-Path $Game 'UntilThen.pck'), 'Open', 'Read', 'Read') }
-    & $Script -Game $Game -CheckOnly:$CheckOnly -Restore:$Restore -SteamTimeoutSeconds 1
-    exit $LASTEXITCODE
+    & $Script -Game $Game -CheckOnly:$CheckOnly -Restore:$Restore
+    $result = $LASTEXITCODE
+    Write-Host ('Steam operations: ' + $script:steamTouches)
+    if ($script:steamTouches -ne 0) { exit 99 }
+    exit $result
 } finally { if ($handle) { $handle.Dispose() } }
 ''', encoding="ascii")
         (self.package / "payload").mkdir()
@@ -267,27 +170,42 @@ try {
         return powershell(self.install_runner, "-Script", self.package / "install_low_memory.ps1", "-Game", self.game,
                           *(["-CheckOnly"] if check else []), ok=ok)
 
-    def test_running_steam_stops_before_writing(self):
+    def test_running_steam_does_not_block_install(self):
         output = powershell(self.install_runner, "-Script", self.package / "install_low_memory.ps1",
-                            "-Game", self.game, "-MockRunning", ok=False)
-        self.assertIn('fully exit Steam', output)
-        self.assertEqual(self.pck.read_bytes(), self.old_bytes)
-        self.assertFalse(self.bak.exists())
+                            "-Game", self.game, "-MockRunning")
+        self.assertIn('Steam operations: 0', output)
+        check_contents(self.pck, self.expected)
+        self.assertEqual(self.bak.read_bytes(), self.old_bytes)
 
     def test_restore_uses_shared_guard_and_preserves_backup(self):
         self.install()
-        powershell(self.install_runner, '-Script', self.package / 'install_low_memory.ps1',
-                   '-Game', self.game, '-Restore', '-MockRunning', ok=False)
-        check_contents(self.pck, self.expected)
-        powershell(self.install_runner, '-Script', self.package / 'install_low_memory.ps1',
-                   '-Game', self.game, '-Restore')
+        output = powershell(self.install_runner, '-Script', self.package / 'install_low_memory.ps1',
+                            '-Game', self.game, '-Restore', '-MockRunning')
+        self.assertIn('Steam operations: 0', output)
         self.assertEqual(self.pck.read_bytes(), self.old_bytes)
         self.assertEqual(self.bak.read_bytes(), self.old_bytes)
 
-    def test_steam_reopens_during_build_does_not_replace_game(self):
+    def test_steam_starting_during_build_does_not_block_install(self):
         output = powershell(self.install_runner, '-Script', self.package / 'install_low_memory.ps1',
-                            '-Game', self.game, '-MockReopen', ok=False)
-        self.assertIn('Steam reopened', output)
+                            '-Game', self.game, '-MockReopen')
+        self.assertIn('Steam operations: 0', output)
+        check_contents(self.pck, self.expected)
+        self.assertEqual(self.bak.read_bytes(), self.old_bytes)
+        self.assertFalse(list(self.game.glob('*.tmp.pck')))
+
+    def test_running_game_preserves_live_file(self):
+        output = powershell(self.install_runner, '-Script', self.package / 'install_low_memory.ps1',
+                            '-Game', self.game, '-MockRunning', '-MockGameRunning', ok=False)
+        self.assertIn('Save and close Until Then', output)
+        self.assertIn('Steam operations: 0', output)
+        self.assertEqual(self.pck.read_bytes(), self.old_bytes)
+        self.assertFalse(self.bak.exists())
+
+    def test_game_reopening_during_build_preserves_live_file(self):
+        output = powershell(self.install_runner, '-Script', self.package / 'install_low_memory.ps1',
+                            '-Game', self.game, '-MockGameReopen', ok=False)
+        self.assertIn('Save and close Until Then', output)
+        self.assertIn('Steam operations: 0', output)
         self.assertEqual(self.pck.read_bytes(), self.old_bytes)
         self.assertFalse(self.bak.exists())
         self.assertFalse(list(self.game.glob('*.tmp.pck')))
@@ -309,10 +227,12 @@ try {
         self.assertEqual(self.pck.read_bytes(), self.old_bytes)
 
     def test_locked_live_file_is_preserved(self):
-        # Existing backup exercises atomic Replace failure after a successful build.
+        # Steam may remain open, but an actual file lock must still stop the operation.
         self.bak.write_bytes(self.old_bytes)
-        powershell(self.install_runner, "-Script", self.package / "install_low_memory.ps1",
-                   "-Game", self.game, "-HoldLive", ok=False)
+        output = powershell(self.install_runner, "-Script", self.package / "install_low_memory.ps1",
+                            "-Game", self.game, "-HoldLive", '-MockRunning', ok=False)
+        self.assertIn('UntilThen.pck is locked', output)
+        self.assertIn('Steam operations: 0', output)
         self.assertEqual(self.pck.read_bytes(), self.old_bytes)
         self.assertEqual(self.bak.read_bytes(), self.old_bytes)
         self.assertFalse(list(self.game.glob("*.tmp.pck")))

@@ -1,8 +1,8 @@
 @echo off
 setlocal DisableDelayedExpansion
 title Until Then - Thai Mod Uninstaller
-echo Save and close the game first. Steam will be asked to exit.
-echo If Steam cannot close within 30 seconds, the uninstaller will stop.
+echo Save and close Until Then first. You manage Steam yourself.
+echo Steam may stay open if the game files are not locked.
 echo.
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_low_memory.ps1" -Restore %*
 set "UNINSTALL_RESULT=%ERRORLEVEL%"
