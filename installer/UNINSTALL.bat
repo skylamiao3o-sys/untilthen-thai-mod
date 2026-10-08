@@ -1,65 +1,12 @@
 @echo off
-setlocal EnableDelayedExpansion
+setlocal DisableDelayedExpansion
 title Until Then - Thai Mod Uninstaller
-
-net session >nul 2>&1
-if %errorlevel% neq 0 (
-  powershell -NoProfile -Command "Start-Process -Verb RunAs -FilePath '%~f0'"
-  exit /b
-)
-
-REM auto-detect the game across all Steam libraries (same as the installer)
-set "GAME="
-if exist "%~dp0detect_game.ps1" (
-  for /f "delims=" %%G in ('powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0detect_game.ps1" 2^>nul') do set "GAME=%%G"
-)
-if not defined GAME set "GAME=C:\Program Files (x86)\Steam\steamapps\common\Until Then"
-if not exist "%GAME%\UntilThen.pck.bak" (
-  set /p GAME=Type the full path to the "Until Then" folder:
-)
-
-set "PCK=%GAME%\UntilThen.pck"
-set "BAK=%GAME%\UntilThen.pck.bak"
-
-if not exist "%BAK%" (
-  echo [X] No backup found. Use Steam -^> Verify integrity instead.
-  pause & exit /b 1
-)
-
-set "STEAMEXE="
-for /f "tokens=2,*" %%A in ('reg query "HKCU\Software\Valve\Steam" /v SteamExe 2^>nul') do set "STEAMEXE=%%B"
-if defined STEAMEXE set "STEAMEXE=%STEAMEXE:/=\%"
-set "REOPEN="
-
-tasklist /fi "imagename eq steam.exe" 2>nul | find /i "steam.exe" >nul
-if %errorlevel%==0 (
-  set "REOPEN=1"
-  if defined STEAMEXE (
-    echo [..] Closing Steam gracefully ^(will reopen when done^)...
-    start "" "%STEAMEXE%" -shutdown
-  ) else (
-    echo [!] Please FULLY EXIT Steam, then press any key...
-    pause >nul
-  )
-)
-set /a _w=0
-:waitsteam
-tasklist /fi "imagename eq steam.exe" 2>nul | find /i "steam.exe" >nul
-if %errorlevel%==0 (
-  set /a _w+=1
-  if !_w! gtr 20 ( echo [!] Steam still running, exit it then press a key... & pause >nul & set /a _w=0 ) else ( ping -n 3 127.0.0.1 >nul )
-  goto waitsteam
-)
-
-echo [..] Restoring original...
-copy /Y "%BAK%" "%PCK%" >nul 2>&1
-if errorlevel 1 (
-  echo [X] Restore FAILED - close Steam fully ^(tray -^> Exit^) and run this again.
-  echo     Still failing? Steam -^> right-click Until Then -^> Properties -^>
-  echo     Installed Files -^> "Verify integrity of game files" also restores it.
-  pause & exit /b 1
-)
-echo [OK] Restored to English. (backup kept as UntilThen.pck.bak)
+echo Save and close the game first. Steam will be asked to exit.
+echo If Steam cannot close within 30 seconds, the uninstaller will stop.
 echo.
-if defined REOPEN if defined STEAMEXE ( echo [..] Reopening Steam... & start "" "%STEAMEXE%" )
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_low_memory.ps1" -Restore %*
+set "UNINSTALL_RESULT=%ERRORLEVEL%"
+echo.
+if not "%UNINSTALL_RESULT%"=="0" echo Restore did not complete. See the message above and uninstall_debug.log.
 pause
+exit /b %UNINSTALL_RESULT%
